@@ -1,0 +1,187 @@
+from qiskit import *
+
+from qiskit.extensions import *
+from qiskit.tools.visualization import *
+from qiskit.tools.monitor import job_monitor
+from qiskit.providers.aer import noise
+
+from math import *
+from sympy import*
+import numpy as np
+import cmath
+import matplotlib.pyplot as plt
+
+
+#UNITÁRIAS
+def u(k):
+    return np.array( [[1,  cmath.exp(-pi*1j/k)], 
+                      [-cmath.exp(pi*1j/k), 1]] )/sqrt(2)
+
+def V(k):
+    def i(k):
+        return im(cmath.exp(pi*1j/k))
+    def r(k):
+        return re(cmath.exp(pi*1j/k))
+    m=np.array( [[1/sqrt(2), 0, sqrt(r(k)) , cmath.exp(pi*1j/k)/sqrt(2)], 
+                  [1/sqrt(2), 0,-cmath.exp(-pi*1j/3)*sqrt(r(k)),cmath.exp(-pi*1j/k)/sqrt(2)],
+                 [sqrt(r(k)), 0,cmath.exp(-pi*1j/(2*k))*i(k)/(1j*sqrt(2)*r(2*k)),-sqrt(r(k))],
+                 [0,sqrt(r(k)+1),0,0]])
+    
+    return m/sqrt(r(k)+1)
+
+def psi(n): 
+    d=int(pow(2,n)); a=float(sqrt(1/pow(2,n)))
+    v=[0]*2*d; v[0]=a; v[int(2*(d-1))]=a;
+
+    for i in list(range(1,d-1)):
+        v[2*i+1]=a
+    
+    return v
+
+
+def maximo(x):
+    R0 = x[:len(x)//2]        
+    R1 = x[len(x)//2:]
+    z=[0]*len(R1)
+    s=[0]*len(R1)
+
+    for i in range(len(R1)):
+        if R1[i]==0 and R0[i]==0: z[i]=0
+        if R1[i]==0 and R0[i]==1: z[i]=1
+        if R1[i]==1 and R0[i]==0: z[i]=2
+        if R1[i]==1 and R0[i]==1: z[i]=3
+
+    for i in range(len(z)):
+        if z[i]==max(z): s[i]=1
+        else: s[i]=0
+
+    return s
+
+def subB(k): #ok
+    subB = QuantumCircuit(2*k,name="SubB")
+    vk = UnitaryGate(V(k))
+    for i in range(k): 
+        subB.cx(i,k+i);
+        subB.append(vk, [i,k+i])
+    #qc.append(subB(k),list(range(1,2*k+1))).c_if(cr,0) 
+    subB=subB.to_instruction()
+
+    return subB
+
+def alg_impar(k):
+    
+    #Definição do tamanho do circuito 
+    s=[0]; r0=list(range(1,k+1));  r1=list(range(k+1,2*k+1))
+    qr =QuantumRegister(2*k+1,'q');cr =ClassicalRegister(2*k+1,'c')
+    qc=QuantumCircuit(qr,cr) 
+    
+    #Sub-Rotina A: inicialização dos registradores com psi(k)
+    qc.initialize(psi(k),list(range(k+1)))  
+    
+    #Medição do Resgistrador S em cS
+    qc.measure(s,s)
+    #Adição da Sub-Rotina B sobre R0 e R1, se os registradores clássicos estiverem setados
+    qc.append(subB(k),list(range(1,2*k+1))).c_if(cr,0) 
+
+    #Medição dos Registradores R0 e R1, respectivamente
+    qc.measure(r0,r0); qc.measure(r1,r1)
+
+    #Compilação e execução do circuito acima construído
+    job=qiskit.execute(qc,backend=simu,noise_model=noise_model,shots=1)
+    result=job.result()
+    counts=result.get_counts(qc)
+    
+    #Tratamento do resultado
+    lAnswer = [(p[::-1],v) for p,v in counts.items()]
+    lAnswer.sort(key = lambda x: x[1], reverse=True)
+    Y = []
+    for p, v in lAnswer: Y.append( [ int(z) for z in p ] )
+    del Y[0][0:1] 
+    
+    return Y[0]
+
+def alg_par(k):
+    s=[0]; r0=list(range(1,k+1));  r1=list(range(k+1,2*k+1))
+    qr =QuantumRegister(k+1,'q')
+    cr =ClassicalRegister(k+1,'c')  
+    qc=QuantumCircuit(qr,cr) 
+    
+    qc.initialize(psi(k),list(range(k+1)))  
+    
+    qc.measure(s,s)
+    uk=UnitaryGate(u(k)); 
+    qc.append(uk,[r0]).c_if(cr,0) 
+    
+    qc.measure(r0,r0)
+
+    job=qiskit.execute(qc,backend=simu,noise_model=noise_model,shots=1)
+    result=job.result()
+    counts=result.get_counts(qc)
+
+    lAnswer = [(p[::-1],v) for p,v in counts.items()]
+    lAnswer.sort(key = lambda x: x[1], reverse=True)
+    Y = []
+    for p, v in lAnswer: Y.append( [ int(z) for z in p ] )
+
+    del Y[0][0:1]
+    return Y[0]
+
+def status3(status,y):
+    j=0
+    for i in range(len(status)):
+        if status[i]==1:
+            status[i]=y[j]; j=j+1
+    return status
+
+    
+def alg(n):
+    status=[1]*n
+
+    while status.count(1)>1:
+        k=status.count(1)
+
+        if k%2==0 :
+            y=alg_par(k)
+            while y.count(1)==0: 
+                y=alg_par(k)
+            status=status3(status,y)            
+
+        else:
+            y=maximo(alg_impar(k))
+            while y.count(1)==0: 
+                y=maximo(alg_impar(k))
+            status=status3(status,y)
+
+    if status.count(1)==0:
+        return -1
+    if status.count(1)==1:
+        return status.index(1)
+
+#Para avaliar a performance
+def algp(n):
+    status=[1]*n
+    e=o=0
+
+    while status.count(1)>1:
+        k=status.count(1)
+
+        if k%2==0 :
+            y=alg_par(k) 
+            e=e+1
+            while y.count(1)==0: 
+                y=alg_par(k) 
+                e=e+1
+            status=status3(status,y)            
+
+        else:
+            y=maximo(alg_impar(k)) 
+            o=o+1
+            while y.count(1)==0: 
+                y=maximo(alg_impar(k))
+                o=o+1
+            status=status3(status,y)     
+
+    if status.count(1)==0:
+        return 999
+    if status.count(1)==1:
+        return o+e
