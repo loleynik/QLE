@@ -12,7 +12,7 @@ import cmath
 import matplotlib.pyplot as plt
 
 
-#UNITÁRIAS
+#Unitaries Matrices
 def u(k):
     return np.array( [[1,  cmath.exp(-pi*1j/k)], 
                       [-cmath.exp(pi*1j/k), 1]] )/sqrt(2)
@@ -70,28 +70,28 @@ def subB(k): #ok
 
 def alg_impar(k):
     
-    #Definição do tamanho do circuito 
+    #Quantum circuit definition
     s=[0]; r0=list(range(1,k+1));  r1=list(range(k+1,2*k+1))
     qr =QuantumRegister(2*k+1,'q');cr =ClassicalRegister(2*k+1,'c')
     qc=QuantumCircuit(qr,cr) 
     
-    #Sub-Rotina A: inicialização dos registradores com psi(k)
+    #Sub-Rotine A: Initializing registers with state psi(k)
     qc.initialize(psi(k),list(range(k+1)))  
     
-    #Medição do Resgistrador S em cS
+    
     qc.measure(s,s)
-    #Adição da Sub-Rotina B sobre R0 e R1, se os registradores clássicos estiverem setados
+    #Sub-Rotine B with R0 e R1 when classical registers are set
     qc.append(subB(k),list(range(1,2*k+1))).c_if(cr,0) 
 
-    #Medição dos Registradores R0 e R1, respectivamente
+    #Measuring R0 e R1
     qc.measure(r0,r0); qc.measure(r1,r1)
 
-    #Compilação e execução do circuito acima construído
+    #Execution of the above circuit
     job=qiskit.execute(qc,backend=simu,noise_model=noise_model,shots=1)
     result=job.result()
     counts=result.get_counts(qc)
     
-    #Tratamento do resultado
+    #Treatment of results
     lAnswer = [(p[::-1],v) for p,v in counts.items()]
     lAnswer.sort(key = lambda x: x[1], reverse=True)
     Y = []
@@ -157,7 +157,7 @@ def alg(n):
     if status.count(1)==1:
         return status.index(1)
 
-#Para avaliar a performance
+#Performance analysis
 def algp(n):
     status=[1]*n
     e=o=0
